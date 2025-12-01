@@ -56,73 +56,132 @@ export function PDFUpload({ onDadosExtraidos }: PDFUploadProps) {
       const arrayBuffer = await file.arrayBuffer();
       setProgresso(50);
 
-      // Importar e usar pdfjs-dist com worker desabilitado para evitar problemas de versão
+      // Importar e usar pdfjs-dist com configuração alternativa
       const pdfjs = await import('pdfjs-dist');
       
-      // Configuração sem worker para evitar problemas de compatibilidade
-      if (typeof window !== 'undefined') {
-        // Não configurar worker para forçar uso de worker falso
-        // Isso evita problemas de versão entre API e Worker
-        pdfjs.GlobalWorkerOptions.workerSrc = '';
-      }
-      
-      // Carregar o documento PDF com worker desabilitado
-      const loadingTask = pdfjs.getDocument({ 
-        data: arrayBuffer,
-        // Configurações para máxima compatibilidade
-        disableAutoFetch: true,
-        disableStream: true,
-        isEvalSupported: false,
-        // Desabilitar worker completamente para evitar problemas de versão
-        disableWorker: true,
-        useSystemFonts: true
-      });
-      
-      const pdf = await loadingTask.promise;
-      setProgresso(70);
-
-      // Extrair texto de todas as páginas
-      let fullText = '';
-      const numPages = pdf.numPages;
-      
-      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-        const page = await pdf.getPage(pageNum);
-        const textContent = await page.getTextContent({
-          normalizeWhitespace: true,
-          disableCombineTextItems: false
+      // Tentar abordagem mais simples primeiro
+      try {
+        // Configuração do worker com fallback local
+        if (typeof window !== 'undefined') {
+          // Tentar usar CDN primeiro
+          pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+        }
+        
+        // Carregar o documento PDF
+        const loadingTask = pdfjs.getDocument({ 
+          data: arrayBuffer,
+          // Configurações mínimas para evitar conflitos
+          disableAutoFetch: true,
+          disableStream: true
         });
-        const pageText = textContent.items.map((item: any) => item.str).join(' ');
-        fullText += pageText + '\n';
-        setProgresso(70 + (pageNum / numPages) * 20);
+        
+        const pdf = await loadingTask.promise;
+        setProgresso(70);
+
+        // Extrair texto de todas as páginas
+        let fullText = '';
+        const numPages = pdf.numPages;
+        
+        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const textContent = await page.getTextContent({
+            normalizeWhitespace: true,
+            disableCombineTextItems: false
+          });
+          const pageText = textContent.items.map((item: any) => item.str).join(' ');
+          fullText += pageText + '\n';
+          setProgresso(70 + (pageNum / numPages) * 20);
+        }
+
+        setProgresso(90);
+        
+        // Processar o texto extraído
+        const dados = CaixaPDFParserRobusto.parsePDFText(fullText);
+        setProgresso(100);
+
+        if (!dados) {
+          throw new Error('Não foi possível extrair os dados do PDF. Verifique se o formato está correto.');
+        }
+
+        // Validar dados extraídos
+        if (!CaixaPDFParserRobusto.validarDadosExtraidos(dados)) {
+          throw new Error('Dados extraídos são inválidos ou incompletos.');
+        }
+
+        setDadosExtraidos(dados);
+
+        // Converter para formato do aplicativo
+        const dadosFinanciamento = CaixaPDFParserRobusto.converterParaFinanciamentoDados(dados);
+        
+        // Validar conversão
+        const validacao = CalculadoraFinanciamento.validarDadosCaixa(dadosFinanciamento);
+        if (!validacao.valido) {
+          console.warn('Avisos de validação:', validacao.erros);
+        }
+
+        onDadosExtraidos(dadosFinanciamento);
+        
+      } catch (pdfError) {
+        console.warn('Erro no processamento PDF, tentando fallback:', pdfError);
+        
+        // Fallback: desabilitar worker completamente
+        const pdfjsFallback = await import('pdfjs-dist');
+        pdfjsFallback.GlobalWorkerOptions.workerSrc = '';
+        
+        const loadingTask = pdfjsFallback.getDocument({ 
+          data: arrayBuffer,
+          disableWorker: true,
+          disableAutoFetch: true,
+          disableStream: true,
+          isEvalSupported: false
+        });
+        
+        const pdf = await loadingTask.promise;
+        setProgresso(70);
+
+        // Extrair texto de todas as páginas
+        let fullText = '';
+        const numPages = pdf.numPages;
+        
+        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const textContent = await page.getTextContent({
+            normalizeWhitespace: true,
+            disableCombineTextItems: false
+          });
+          const pageText = textContent.items.map((item: any) => item.str).join(' ');
+          fullText += pageText + '\n';
+          setProgresso(70 + (pageNum / numPages) * 20);
+        }
+
+        setProgresso(90);
+        
+        // Processar o texto extraído
+        const dados = CaixaPDFParserRobusto.parsePDFText(fullText);
+        setProgresso(100);
+
+        if (!dados) {
+          throw new Error('Não foi possível extrair os dados do PDF. Tente usar a opção "Colar texto do PDF".');
+        }
+
+        // Validar dados extraídos
+        if (!CaixaPDFParserRobusto.validarDadosExtraidos(dados)) {
+          throw new Error('Dados extraídos são inválidos ou incompletos.');
+        }
+
+        setDadosExtraidos(dados);
+
+        // Converter para formato do aplicativo
+        const dadosFinanciamento = CaixaPDFParserRobusto.converterParaFinanciamentoDados(dados);
+        
+        // Validar conversão
+        const validacao = CalculadoraFinanciamento.validarDadosCaixa(dadosFinanciamento);
+        if (!validacao.valido) {
+          console.warn('Avisos de validação:', validacao.erros);
+        }
+
+        onDadosExtraidos(dadosFinanciamento);
       }
-
-      setProgresso(90);
-      
-      // Processar o texto extraído
-      const dados = CaixaPDFParserRobusto.parsePDFText(fullText);
-      setProgresso(100);
-
-      if (!dados) {
-        throw new Error('Não foi possível extrair os dados do PDF. Verifique se o formato está correto.');
-      }
-
-      // Validar dados extraídos
-      if (!CaixaPDFParserRobusto.validarDadosExtraidos(dados)) {
-        throw new Error('Dados extraídos são inválidos ou incompletos.');
-      }
-
-      setDadosExtraidos(dados);
-
-      // Converter para formato do aplicativo
-      const dadosFinanciamento = CaixaPDFParserRobusto.converterParaFinanciamentoDados(dados);
-      
-      // Validar conversão
-      const validacao = CalculadoraFinanciamento.validarDadosCaixa(dadosFinanciamento);
-      if (!validacao.valido) {
-        console.warn('Avisos de validação:', validacao.erros);
-      }
-
-      onDadosExtraidos(dadosFinanciamento);
 
     } catch (error) {
       console.error('Erro ao processar PDF:', error);

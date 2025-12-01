@@ -20,7 +20,7 @@ export class CaixaPDFParserRobusto {
         
         // Fallback: busca por linha específica
         for (let i = 0; i < linhas.length; i++) {
-          if (linhas[i].toLowerCase().includes(nomeCampo.toLowerCase())) {
+          if (linhas[i] && nomeCampo && linhas[i].toLowerCase().includes(nomeCampo.toLowerCase())) {
             // Tentar extrair da mesma linha
             const mesmaLinha = linhas[i].match(/([\d.,]+%?)/);
             if (mesmaLinha) return mesmaLinha[1];
@@ -145,7 +145,7 @@ export class CaixaPDFParserRobusto {
         } else {
           // Abordagem alternativa: busca contextual + split
           for (let i = 0; i < linhas.length; i++) {
-            if (linhas[i].includes('Primeira Prestação') && 
+            if (linhas[i] && linhas[i].includes('Primeira Prestação') && 
                 linhas[i].includes('Juros Nominais') && 
                 linhas[i].includes('Juros Efetivos')) {
               
@@ -181,7 +181,7 @@ export class CaixaPDFParserRobusto {
         } else {
           // Abordagem alternativa: busca contextual + split
           for (let i = 0; i < linhas.length; i++) {
-            if (linhas[i].includes('Primeira Prestação') && 
+            if (linhas[i] && linhas[i].includes('Primeira Prestação') && 
                 linhas[i].includes('Juros Nominais') && 
                 linhas[i].includes('Juros Efetivos')) {
               
@@ -405,7 +405,7 @@ export class CaixaPDFParserRobusto {
     }
 
     // Correção 6: Validar sistema de amortização
-    if (dados.sistemaAmortizacao) {
+    if (dados.sistemaAmortizacao && typeof dados.sistemaAmortizacao === 'string') {
       const sistema = dados.sistemaAmortizacao.toUpperCase().trim();
       if (sistema.includes('PRICE') && sistema.includes('TR')) {
         dados.sistemaAmortizacao = 'PRICE TR';
@@ -426,7 +426,7 @@ export class CaixaPDFParserRobusto {
    * Parse monetário robusto que lida com múltiplos formatos
    */
   static parseMonetary(value: string): number {
-    if (!value) return 0;
+    if (!value || typeof value !== 'string') return 0;
     
     // Remove R$, espaços e outros caracteres não numéricos exceto vírgula e ponto
     const cleanValue = value
@@ -501,6 +501,8 @@ export class CaixaPDFParserRobusto {
   }
 
   private static normalizarSistema(sistema: string): 'PRICE' | 'SAC' | 'PRICE TR' {
+    if (!sistema || typeof sistema !== 'string') return 'PRICE';
+    
     const sistemaNormalizado = sistema.toUpperCase().trim();
     if (sistemaNormalizado.includes('PRICE TR') || sistemaNormalizado.includes('TR')) {
       return 'PRICE TR';
